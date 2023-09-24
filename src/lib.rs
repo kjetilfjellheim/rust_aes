@@ -62,12 +62,12 @@ impl AESBlock<DecryptedState> {
         for (idx, _) in roundkeys.iter().skip(1).enumerate() {
             result = self.sub_bytes(&result);
             result = self.shift_grid(&result);
-            result = if idx != roundkeys.len() - 1 {
+            result = if idx != (roundkeys.len() - 1) {
                 self.mix_columns(&result)
             } else {
                 result
             };
-            result = self.add_roundkey(&result, &roundkeys[idx]);
+            result = self.add_roundkey(&result, &roundkeys[idx + 1]);
         }
         AESBlock {
             grid: result.clone(),
