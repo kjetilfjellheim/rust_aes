@@ -1,177 +1,213 @@
 use std::vec::Vec;
 
-fn add_roundkey(grid: Vec<u8>, roundkey: Vec<u8>) -> Vec<u8> {
-    let mut result: Vec<u8> = vec![0; grid.len()];
-    for (idx, value) in grid.iter().enumerate() {
-        result[idx] = value ^ roundkey[idx];
+pub struct DecryptedState;
+pub struct EncryptedState;
+
+pub struct AESBlock<State = DecryptedState> {
+    grid: Vec<u8>,
+    state: std::marker::PhantomData<State>
+}
+
+impl AESBlock<DecryptedState> {
+
+    pub fn new(data: Vec<u8>) -> AESBlock<DecryptedState> {
+        AESBlock {
+            grid: data,
+            state: std::marker::PhantomData::<DecryptedState>
+        }
     }
-    result
-}
-
-fn shift_row(row: Vec<u8>, shift: usize) -> Vec<u8> {
-    let mut result = vec![0; row.len()];
-    for (idx, value) in row.iter().enumerate() {
-        let new_idx = idx + row.len() - shift;
-        result[(new_idx) % row.len()] = *value;
+    
+    pub fn encrypt(&self, roundkeys: &Vec<Vec<u8>>, s_box: &[u8]) -> AESBlock<EncryptedState> {
+        let mut result = self.add_roundkey(&self.grid, &roundkeys[0]);
+        for (idx, _) in roundkeys.iter().skip(1).enumerate() {
+            result = self.sub_bytes(&result, s_box);
+            result = self.shift_grid(&result);
+            result = if idx != roundkeys.len() - 1 {
+                self.mix_columns(&result)
+            } else {
+                result
+            };
+            result = self.add_roundkey(&result, &roundkeys[idx]);
+        }
+        AESBlock {
+            grid: result.clone(),
+            state: std::marker::PhantomData::<EncryptedState>
+        }
     }
-    result
+
+    ///
+    /// Shifts a row of bytes left by the specified amount.
+    /// 
+    /// row: A vector of 4 bytes.
+    /// shift: The amount to shift the row by.
+    /// 
+    /// result: A vector of 4 bytes shifted.
+    /// 
+    /// 
+    fn shift_row(&self, row: &[u8], shift: &usize) -> Vec<u8> {
+        let mut result = vec![0; row.len()];
+        for (idx, value) in row.iter().enumerate() {
+            let new_idx = idx + row.len() - shift;
+            result[(new_idx) % row.len()] = *value;
+        }
+        result
+    }
+
+    ///
+    /// Shifts the grid by the following pattern:
+    /// row 1 not shifted.
+    /// row 2 shifted to the left once
+    /// row 3 shifted to the left twice
+    /// row 4 shifted to the left three times
+    /// 
+    /// data: A vector of 16 bytes. These are considered to be in 
+    ///       pattern of a 4x4 grid with row-major order.
+    /// 
+    /// result: A vector of 16 bytes. These are considered to be in
+    ///         pattern of a 4x4 grid with row-major order.
+    /// 
+    fn shift_grid(&self, data: &[u8]) -> Vec<u8> {
+        let mut result: Vec<u8> = vec![0; data.len()];
+        data.chunks(4).enumerate().for_each(|(idx, row)| {
+            let shifted_row = self.shift_row(row, &idx);
+            result.splice(idx * 4..idx * 4 + 4, shifted_row);
+        });
+        result
+    }
+
+    fn mix_columns(&self, data: &[u8]) -> Vec<u8> {
+        data.to_owned()
+    }
+
 }
 
-fn shift_grid(grid: Vec<u8>) -> Vec<u8> {
-    let mut result: Vec<u8> = vec![0; grid.len()];
-    grid.chunks(4).enumerate().for_each(|(idx, row)| {
-        let shifted_row = shift_row(row.to_vec(), idx);
-        result.splice(idx * 4..idx * 4 + 4, shifted_row);
-    });
-    result
+impl AESBlock<EncryptedState> {
+
+    pub fn new(data: Vec<u8>) -> AESBlock<EncryptedState> {
+        AESBlock {
+            grid: data,
+            state: std::marker::PhantomData::<EncryptedState>
+        }
+    }
+
+    //TODO: Implement decryption
+    pub fn decrypt(&self, _: &Vec<Vec<u8>>, _: &[u8]) -> AESBlock<DecryptedState> {
+        AESBlock {
+            grid: self.grid.clone(),
+            state: std::marker::PhantomData::<DecryptedState>
+        }
+    }
+
 }
 
-fn shift_grid_reverse(grid: Vec<u8>) -> Vec<u8> {
-    let mut result: Vec<u8> = vec![0; grid.len()];
-    grid.chunks(4).enumerate().for_each(|(idx, row)| {
-        let shifted_row = shift_row(row.to_vec(), 4 - idx );
-        result.splice(idx * 4..idx * 4 + 4, shifted_row);
-    });
-    result
-}
+impl AESBlock {
 
-fn mix_column(column: Vec<u8>) -> Vec<u8> {
-    let mut result: Vec<u8> = vec![0; column.len()];
-    result[0] = column[0] ^ column[1] ^ column[2] ^ column[3];
-    result[1] = column[0] ^ column[1] ^ column[2] ^ column[3];
-    result[2] = column[0] ^ column[1] ^ column[2] ^ column[3];
-    result[3] = column[0] ^ column[1] ^ column[2] ^ column[3];
-    result    
-}
+    ///
+    /// Substitutes each byte in the data with the corresponding byte in the s_box.
+    /// 
+    /// data: A vector of bytes to be exchanged..
+    /// s_box: A vector of bytes containg the substitution values.
+    /// 
+    /// result: A vector of bytes with the substituted values.
+    /// 
+    fn sub_bytes(&self, data: &[u8], s_box: &[u8]) -> Vec<u8> {
+        let mut result = vec![0; data.len()];
+        for (idx, value) in data.iter().enumerate() {
+            result[idx] = s_box[*value as usize];
+        }
+        result
+    }
 
-fn mix_columns(grid: Vec<u8>) -> Vec<u8> {
-    let mut result: Vec<u8> = vec![0; grid.len()];
-    let mixed_column1 = mix_column(vec![grid[0], grid[4], grid[8], grid[12]]);
-    let mixed_column2 = mix_column(vec![grid[1], grid[5], grid[9], grid[13]]);
-    let mixed_column3 = mix_column(vec![grid[2], grid[6], grid[10], grid[14]]);
-    let mixed_column4 = mix_column(vec![grid[3], grid[7], grid[11], grid[15]]);
-    vec![mixed_column1[0], mixed_column2[0], mixed_column3[0], mixed_column4[0],
-         mixed_column1[1], mixed_column2[1], mixed_column3[1], mixed_column4[1],
-         mixed_column1[2], mixed_column2[2], mixed_column3[2], mixed_column4[2],
-         mixed_column1[3], mixed_column2[3], mixed_column3[3], mixed_column4[3]]
-}
+    ///
+    /// Adds the roundkey to the data.
+    /// 
+    /// data: A vector of bytes to be exchanged.
+    /// roundkey: Key to be added to the data.
+    /// 
+    /// result: A vector of bytes with the added values.
+    /// 
+    fn add_roundkey(&self, data: &[u8], roundkey: &[u8]) -> Vec<u8> {
+        let mut result: Vec<u8> = vec![0; data.len()];
+        for (idx, value) in data.iter().enumerate() {
+            result[idx] = value ^ roundkey[idx];
+        }
+        result
+    }
 
+}
 
 #[cfg(test)]
 mod tests {
 
-    use super::*;   
+    use super::*;
 
     #[test]
     fn test_add_roundkey() {
+        let aes_block = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result: Vec<u8> = vec![0, 3, 6, 11, 8, 4, 5, 2, 15, 0, 1, 6, 3, 15, 13, 11];
-        let roundkey:Vec<u8>  = vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4];
+        let roundkey: Vec<u8> = vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4];
         let grid: Vec<u8> = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        let result: Vec<u8> = add_roundkey(grid, roundkey);
-        assert_eq!(expected_result, result);
-    }
-
-    #[test]
-    fn test_add_roundkey_reverse() {
-        let expected_result: Vec<u8> = vec![00, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        let roundkey:Vec<u8>  = vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4];
-        let grid: Vec<u8> = vec![0, 3, 6, 11, 8, 4, 5, 2, 15, 0, 1, 6, 3, 15, 13, 11];
-        let result: Vec<u8> = add_roundkey(grid, roundkey);
+        let result: Vec<u8> = aes_block.add_roundkey(&grid, &roundkey);
         assert_eq!(expected_result, result);
     }
 
     #[test]
     fn test_shift_row0() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result: Vec<u8> = vec![1, 2, 3, 4];
         let row: Vec<u8> = vec![1, 2, 3, 4];
-        let result = shift_row(row, 0);
-        assert_eq!(expected_result, result);
-    }
-
-    #[test]
-    fn test_shift_row0_reverse() {
-        let expected_result: Vec<u8> = vec![1, 2, 3, 4];
-        let row: Vec<u8> = vec![1, 2, 3, 4];
-        let result = shift_row(row, 0);
+        let result = aes_block.shift_row(&row, &0);
         assert_eq!(expected_result, result);
     }
 
     #[test]
     fn test_shift_row1() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result = vec![2, 3, 4, 1];
         let row = vec![1, 2, 3, 4];
-        let result = shift_row(row, 1);
-        assert_eq!(expected_result, result);
-    }
-
-    #[test]
-    fn test_shift_row1_reverse() {
-        let expected_result = vec![1, 2, 3, 4];
-        let row = vec![2, 3, 4, 1];
-        let result = shift_row(row, 3);
+        let result = aes_block.shift_row(&row, &1);
         assert_eq!(expected_result, result);
     }
 
     #[test]
     fn test_shift_row2() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result = vec![3, 4, 1, 2];
         let row = vec![1, 2, 3, 4];
-        let result = shift_row(row, 2);
-        assert_eq!(expected_result, result);
-    }
-
-    #[test]
-    fn test_shift_row2_reverse() {
-        let expected_result = vec![1, 2, 3, 4];
-        let row = vec![3, 4, 1, 2];
-        let result = shift_row(row, 2);
+        let result = aes_block.shift_row(&row, &2);
         assert_eq!(expected_result, result);
     }
 
     #[test]
     fn test_shift_row3() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result = vec![4, 1, 2, 3];
         let row = vec![1, 2, 3, 4];
-        let result = shift_row(row, 3);
-        assert_eq!(expected_result, result);
-    }
-
-    #[test]
-    fn test_shift_row3_reverse() {
-        let expected_result = vec![1, 2, 3, 4];
-        let row = vec![4, 1, 2, 3];
-        let result = shift_row(row, 1);
+        let result = aes_block.shift_row(&row, &3);
         assert_eq!(expected_result, result);
     }
 
     #[test]
     fn test_shift_grid() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result: Vec<u8> = vec![0, 1, 2, 3, 5, 6, 7, 4, 10, 11, 8, 9, 15, 12, 13, 14];
         let grid: Vec<u8> = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        let result: Vec<u8> = shift_grid(grid);
-        println!("{:?}",result);
-        assert_eq!(expected_result, result);        
-    }
-
-    #[test]
-    fn test_shift_grid_reverse() {
-        let expected_result: Vec<u8> = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        let grid: Vec<u8> = vec![0, 1, 2, 3, 5, 6, 7, 4, 10, 11, 8, 9, 15, 12, 13, 14];
-        let result: Vec<u8> = shift_grid_reverse(grid);
+        let result: Vec<u8> = aes_block.shift_grid(&grid);
+        println!("{:?}", result);
         assert_eq!(expected_result, result);
     }
 
     #[test]
-    fn test_full_encrypt_round1() {
-        let grid: Vec<u8> = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-        let roundkey:Vec<u8>  = vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4];
-        let grid: Vec<u8> = add_roundkey(grid, roundkey);
-        let grid: Vec<u8> = shift_grid(grid);
-        let grid = mix_columns(grid);
-        println!("{:?}",grid);
+    fn test_encrypt() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+        let roundkeys: Vec<Vec<u8>> = vec![vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4]];
+        let result: AESBlock<EncryptedState> = aes_block.encrypt(&roundkeys, &gen_s_box());
     }
 
-    
+
+    fn gen_s_box() -> Vec<u8> {
+        (0..255).collect()
+    }
 
 
 }
