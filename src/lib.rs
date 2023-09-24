@@ -75,8 +75,39 @@ impl AESBlock<DecryptedState> {
         result
     }
 
-    fn mix_columns(&self, data: &[u8]) -> Vec<u8> {
-        data.to_owned()
+    ///
+    /// Mixes the columns of the grid by using the  Rijndael MixColumns
+    /// algorithm. Description of the algorithm can be found here:
+    /// https://en.wikipedia.org/wiki/Rijndael_MixColumns
+    /// 
+    /// data: A vector of 4 bytes for colunm X,
+    /// 
+    /// result: A vector of 4 bytes for each row.
+    ///  
+    fn mix_column(&self, data: &Vec<&u8>) -> Vec<u8> {
+        let mut result: Vec<u8> = vec![0;4];
+        let mut a: Vec<u8> = vec![0;4];
+        let mut b: Vec<u8> = vec![0;4];
+        let mut h: u8;
+        for c in 0..4 {
+            a[c] = *data[c];
+            h = (data[c] >> 7) & 1; 
+            b[c] = data[c] << 1; 
+            b[c] ^= h * 0x1B; 
+        }
+        result[0] = b[0] ^ a[3] ^ a[2] ^ b[1] ^ a[1]; /* 2 * a0 + a3 + a2 + 3 * a1 */
+        result[1] = b[1] ^ a[0] ^ a[3] ^ b[2] ^ a[2]; /* 2 * a1 + a0 + a3 + 3 * a2 */
+        result[2] = b[2] ^ a[1] ^ a[0] ^ b[3] ^ a[3]; /* 2 * a2 + a1 + a0 + 3 * a3 */
+        result[3] = b[3] ^ a[2] ^ a[1] ^ b[0] ^ a[0]; /* 2 * a3 + a2 + a1 + 3 * a0 */
+        result
+    }
+
+    fn mix_columns(&self, data: &[u8]) -> Vec<u8> {        
+        let col1: Vec<u8> = self.mix_column(&data.iter().step_by(4).collect());
+        let col2: Vec<u8> = self.mix_column(&data.iter().skip(1).step_by(4).collect());
+        let col3: Vec<u8> = self.mix_column(&data.iter().skip(2).step_by(4).collect());
+        let col4: Vec<u8> = self.mix_column(&data.iter().skip(3).step_by(4).collect());
+        vec![col1[0], col2[0], col3[0], col4[0], col1[1], col2[1], col3[1], col4[1], col1[2], col2[2], col3[2], col4[2], col1[3], col2[3], col3[3], col4[3]]
     }
 
 }
@@ -193,7 +224,53 @@ mod tests {
         let expected_result: Vec<u8> = vec![0, 1, 2, 3, 5, 6, 7, 4, 10, 11, 8, 9, 15, 12, 13, 14];
         let grid: Vec<u8> = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
         let result: Vec<u8> = aes_block.shift_grid(&grid);
-        println!("{:?}", result);
+        assert_eq!(expected_result, result);
+    }
+
+    #[test]
+    fn test_mix_column() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+        let expected_result: Vec<u8> = vec![1, 1, 1, 1];
+        let data: Vec<&u8> = vec![&1, &1, &1, &1];
+        let result: Vec<u8> = aes_block.mix_column(&data);
+        assert_eq!(expected_result, result);
+    }
+
+    #[test]
+    fn test_mix_column2() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+        let expected_result: Vec<u8> = vec![142, 77, 161, 188];
+        let data: Vec<&u8> = vec![&219, &19, &83, &69];
+        let result: Vec<u8> = aes_block.mix_column(&data);
+        assert_eq!(expected_result, result);
+    }
+
+
+    #[test]
+    fn test_mix_column3() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+        let expected_result: Vec<u8> = vec![159, 220, 88, 157];
+        let data: Vec<&u8> = vec![&242, &10, &34, &92];
+        let result: Vec<u8> = aes_block.mix_column(&data);
+        assert_eq!(expected_result, result);
+    }
+
+
+    #[test]
+    fn test_mix_columns() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+        let expected_result: Vec<u8> = vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+        let grid: Vec<u8> = vec![1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
+        let result: Vec<u8> = aes_block.mix_columns(&grid);
+        assert_eq!(expected_result, result);
+    }
+
+    #[test]
+    fn test_mix_columns2() {
+        let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+        let expected_result: Vec<u8> = vec![142, 159, 1, 198, 77, 220, 1, 198, 161, 88, 1, 198, 188, 157, 1, 198];
+        let grid: Vec<u8> = vec![219, 242, 1, 198, 19, 10, 1, 198, 83, 34, 1, 198, 69, 92, 1, 198];
+        let result: Vec<u8> = aes_block.mix_columns(&grid);
         assert_eq!(expected_result, result);
     }
 
