@@ -1,6 +1,12 @@
 use std::vec::Vec;
 
+///
+/// DecryptedState is a marker struct used to indicate that the data is decrypted.
+/// 
 pub struct DecryptedState;
+///
+/// EncryptedState is a marker struct used to indicate that the data is encrypted.
+/// 
 pub struct EncryptedState;
 
 ///
@@ -20,11 +26,23 @@ pub struct AESBlock<State = DecryptedState> {
     state: std::marker::PhantomData<State>
 }
 
+/// 
+/// AESData is a struct containg a vector of bytes. This struct can be used to encrypt or decrypt
+/// the included data. 
+/// 
+pub struct AESData<State = DecryptedState> {
+    data: Vec<u8>,
+    state: std::marker::PhantomData<State>
+}
+
 ///
 /// Implementation of the decrypted AESBlock struct.
 ///
 impl AESBlock<DecryptedState> {
 
+    ///
+    /// Substitutes each byte in the data with the corresponding byte in the s_box.
+    /// 
     const S_BOX: [&'static u8; 256] = [ &0x63,&0x7c,&0x77,&0x7b,&0xf2,&0x6b,&0x6f,&0xc5,&0x30,&0x01,&0x67,&0x2b,&0xfe,&0xd7,&0xab,&0x76,
                                         &0xca,&0x82,&0xc9,&0x7d,&0xfa,&0x59,&0x47,&0xf0,&0xad,&0xd4,&0xa2,&0xaf,&0x9c,&0xa4,&0x72,&0xc0,
                                         &0xb7,&0xfd,&0x93,&0x26,&0x36,&0x3f,&0xf7,&0xcc,&0x34,&0xa5,&0xe5,&0xf1,&0x71,&0xd8,&0x31,&0x15,
@@ -49,7 +67,6 @@ impl AESBlock<DecryptedState> {
         }
     }
     
-
     ///
     /// Full encryption of a single 16 byte block.
     /// 
@@ -106,13 +123,13 @@ impl AESBlock<DecryptedState> {
     /// 
     /// result: A vector of 4 bytes for each row.
     ///  
-    fn mix_column(&self, data: &Vec<&u8>) -> Vec<u8> {
+    fn mix_column(&self, data: &[u8]) -> Vec<u8> {
         let mut result: Vec<u8> = vec![0;4];
         let mut a: Vec<u8> = vec![0;4];
         let mut b: Vec<u8> = vec![0;4];
         let mut h: u8;
         for c in 0..4 {
-            a[c] = *data[c];
+            a[c] = data[c];
             h = (data[c] >> 7) & 1; 
             b[c] = data[c] << 1; 
             b[c] ^= h * 0x1B; 
@@ -136,10 +153,10 @@ impl AESBlock<DecryptedState> {
     ///     pattern of a 4x4 grid with row-major order.
     /// 
     fn mix_columns(&self, data: &[u8]) -> Vec<u8> {        
-        let col1: Vec<u8> = self.mix_column(&data.iter().step_by(4).collect());
-        let col2: Vec<u8> = self.mix_column(&data.iter().skip(1).step_by(4).collect());
-        let col3: Vec<u8> = self.mix_column(&data.iter().skip(2).step_by(4).collect());
-        let col4: Vec<u8> = self.mix_column(&data.iter().skip(3).step_by(4).collect());
+        let col1: Vec<u8> = self.mix_column(&[data[0], data[4], data[8], data[12]]);
+        let col2: Vec<u8> = self.mix_column(&[data[1], data[5], data[9], data[13]]);
+        let col3: Vec<u8> = self.mix_column(&[data[2], data[6], data[10], data[14]]);
+        let col4: Vec<u8> = self.mix_column(&[data[3], data[7], data[11], data[15]]);
         vec![col1[0], col2[0], col3[0], col4[0], col1[1], col2[1], col3[1], col4[1], col1[2], col2[2], col3[2], col4[2], col1[3], col2[3], col3[3], col4[3]]
     }
 
@@ -167,6 +184,9 @@ impl AESBlock<DecryptedState> {
 ///
 impl AESBlock<EncryptedState> {
 
+    ///
+    /// Substitutes each byte in the data with the corresponding byte in the inverse_s_box.
+    /// 
     const INVERSE_S_BOX: [&'static u8; 256] = [ &0x52,&0x09,&0x6a,&0xd5,&0x30,&0x36,&0xa5,&0x38,&0xbf,&0x40,&0xa3,&0x9e,&0x81,&0xf3,&0xd7,&0xfb,
                                                 &0x7c,&0xe3,&0x39,&0x82,&0x9b,&0x2f,&0xff,&0x87,&0x34,&0x8e,&0x43,&0x44,&0xc4,&0xde,&0xe9,&0xcb,
                                                 &0x54,&0x7b,&0x94,&0x32,&0xa6,&0xc2,&0x23,&0x3d,&0xee,&0x4c,&0x95,&0x0b,&0x42,&0xfa,&0xc3,&0x4e,
@@ -184,6 +204,13 @@ impl AESBlock<EncryptedState> {
                                                 &0xa0,&0xe0,&0x3b,&0x4d,&0xae,&0x2a,&0xf5,&0xb0,&0xc8,&0xeb,&0xbb,&0x3c,&0x83,&0x53,&0x99,&0x61,
                                                 &0x17,&0x2b,&0x04,&0x7e,&0xba,&0x77,&0xd6,&0x26,&0xe1,&0x69,&0x14,&0x63,&0x55,&0x21,&0x0c,&0x7d];
 
+    ///
+    /// Creates a new AESBlock struct with the specified data.
+    /// 
+    /// data: A vector of bytes.
+    /// 
+    /// result: A AESBlock struct with the specified data.
+    ///                                                     
     pub fn new(data: Vec<u8>) -> AESBlock<EncryptedState> {
         AESBlock {
             grid: data,
@@ -191,6 +218,13 @@ impl AESBlock<EncryptedState> {
         }
     }
 
+    ///
+    /// Full decryption of a single 16 byte block.
+    /// 
+    /// roundkeys: A vector of 11, 13 or 15 roundkeys. Each roundkey is a vector of 16 bytes.
+    /// 
+    /// result: A vector of 16 bytes decrypted.
+    /// 
     pub fn decrypt(&self, roundkeys: &Vec<Vec<u8>>) -> AESBlock<DecryptedState> {
         let mut result = self.add_roundkey(&self.grid, &roundkeys[roundkeys.len() - 1]);
         for (idx, _) in roundkeys.iter().rev().skip(1).enumerate() {
@@ -209,14 +243,24 @@ impl AESBlock<EncryptedState> {
         }
     }
 
-
-    fn mix_column(&self, data: &Vec<&u8>) -> Vec<u8> {
+    ///
+    /// Inverse mixes the columns of the grid by using the  Rijndael MixColumns
+    /// algorithm. Description of the algorithm can be found here:
+    /// https://en.wikipedia.org/wiki/Rijndael_MixColumns.
+    /// 
+    /// data: A vector of 16 bytes. These are considered to be in
+    ///      pattern of a 4x4 grid with row-major order.
+    /// 
+    /// result: A vector of 16 bytes. These are considered to be in
+    ///     pattern of a 4x4 grid with row-major order.
+    /// 
+    fn mix_column(&self, data: &[u8]) -> Vec<u8> {
         let mut result: Vec<u8> = vec![0;4];
         let mut a: Vec<u8> = vec![0;4];
         let mut b: Vec<u8> = vec![0;4];
         let mut h: u8;
         for c in 0..4 {
-            a[c] = *data[c];
+            a[c] = data[c];
             h = (data[c] >> 7) & 1; 
             b[c] = data[c] << 1; 
             b[c] ^= h * 0x1B; 
@@ -241,10 +285,10 @@ impl AESBlock<EncryptedState> {
     ///     pattern of a 4x4 grid with row-major order.
     /// 
     fn mix_columns(&self, data: &[u8]) -> Vec<u8> {
-        let col1: Vec<u8> = self.mix_column(&data.iter().step_by(4).collect());
-        let col2: Vec<u8> = self.mix_column(&data.iter().skip(1).step_by(4).collect());
-        let col3: Vec<u8> = self.mix_column(&data.iter().skip(2).step_by(4).collect());
-        let col4: Vec<u8> = self.mix_column(&data.iter().skip(3).step_by(4).collect());
+        let col1: Vec<u8> = self.mix_column(&[data[0], data[4], data[8], data[12]]);
+        let col2: Vec<u8> = self.mix_column(&[data[1], data[5], data[9], data[13]]);
+        let col3: Vec<u8> = self.mix_column(&[data[2], data[6], data[10], data[14]]);
+        let col4: Vec<u8> = self.mix_column(&[data[3], data[7], data[11], data[15]]);
         vec![col1[0], col2[0], col3[0], col4[0], col1[1], col2[1], col3[1], col4[1], col1[2], col2[2], col3[2], col4[2], col1[3], col2[3], col3[3], col4[3]]
     }
 
@@ -290,7 +334,6 @@ impl AESBlock<EncryptedState> {
 }
 
 impl<State> AESBlock<State> {
-
 
     ///
     /// Multiplies two bytes in the Galois field.
@@ -354,6 +397,88 @@ impl<State> AESBlock<State> {
     }
 
 
+}
+
+impl AESData<DecryptedState> {
+
+    ///
+    /// Creates a new AESData struct with the specified data.
+    /// 
+    /// data: A vector of bytes.
+    /// 
+    /// result: A AESData struct with the specified data.
+    /// 
+    pub fn new(data: Vec<u8>) -> AESData<DecryptedState> {
+        AESData {
+            data,
+            state: std::marker::PhantomData::<DecryptedState>
+        }
+    }
+
+    ///
+    /// Encrypts the data using AES ithe specified roundkeys.
+    /// Data is padded with a character to make it a multiple of 16 bytes. 
+    /// This character is the last character xored with 0x01.
+    /// 
+    /// roundkeys: A vector of 11, 13 or 15 roundkeys. Each roundkey is a vector of 16 bytes.
+    /// 
+    /// result: A vector of bytes encrypted.
+    /// 
+    pub fn encrypt(&self, roundkeys: &Vec<Vec<u8>>) -> AESData<EncryptedState> {
+        let padding_char = self.data[self.data.len() - 1] ^ 0x01;
+        let padded_data: Vec<u8> = self.data.iter().chain(vec![padding_char; 32 - (self.data.len() % 16)].iter()).cloned().collect();
+        let encrypted_data = padded_data
+        .chunks(16)
+        .flat_map(|block: &[u8]| {
+            let block = if block.len() < 16 {
+                let mut block: Vec<u8> = block.to_vec();                
+                block.resize(16, padding_char);
+                block
+            } else {
+                block.to_vec()
+            };
+            let aes_block = AESBlock::<DecryptedState>::new(block);
+            aes_block.encrypt(roundkeys).grid
+        }).collect();
+        AESData {
+            data: encrypted_data,
+            state: std::marker::PhantomData::<EncryptedState>
+        }
+    }
+}
+
+impl AESData<EncryptedState> {
+
+    pub fn new(data: Vec<u8>) -> AESData<EncryptedState> {
+        AESData {
+            data,
+            state: std::marker::PhantomData::<EncryptedState>
+        }
+    }
+
+    ///
+    /// Decrypts the data using AES ithe specified roundkeys.
+    /// Any padded characters are removed.
+    /// 
+    /// roundkeys: A vector of 11, 13 or 15 roundkeys. Each roundkey is a vector of 16 bytes.
+    /// 
+    /// result: A vector of bytes decrypted.
+    /// 
+    pub fn decrypt(&self, roundkeys: &Vec<Vec<u8>>) -> AESData<DecryptedState> {
+        let decrypted_data: Vec<u8> = self.data
+        .chunks(16)
+        .flat_map(|block| {
+            let aes_block = AESBlock::<EncryptedState>::new(block.to_vec());
+            aes_block.decrypt(roundkeys).grid
+        })
+        .collect();
+        let padded_char: u8 = decrypted_data[decrypted_data.len() - 1];
+        let idx = decrypted_data.iter().rev().position(|&x| x != padded_char).unwrap_or(0);                
+        AESData {
+            data: decrypted_data[..decrypted_data.len() - idx].to_vec(),
+            state: std::marker::PhantomData::<DecryptedState>
+        }
+    }
 }
 
 #[cfg(test)]
@@ -429,8 +554,8 @@ mod tests {
     fn test_mix_column() {
         let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result: Vec<u8> = vec![1, 1, 1, 1];
-        let data: Vec<&u8> = vec![&1, &1, &1, &1];
-        let result: Vec<u8> = aes_block.mix_column(&data);
+        let data: &[u8] = &[1, 1, 1, 1];
+        let result: Vec<u8> = aes_block.mix_column(data);
         assert_eq!(expected_result, result);
     }
 
@@ -438,8 +563,8 @@ mod tests {
     fn test_inverse_mix_column() {
         let aes_block: AESBlock<EncryptedState> = AESBlock::<EncryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result: Vec<u8> = vec![1, 1, 1, 1];
-        let data: Vec<&u8> = vec![&1, &1, &1, &1];
-        let result: Vec<u8> = aes_block.mix_column(&data);
+        let data: &[u8] = &[1, 1, 1, 1];
+        let result: Vec<u8> = aes_block.mix_column(data);
         assert_eq!(expected_result, result);
     }
 
@@ -447,8 +572,8 @@ mod tests {
     fn test_mix_column2() {
         let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result: Vec<u8> = vec![142, 77, 161, 188];
-        let data: Vec<&u8> = vec![&219, &19, &83, &69];
-        let result: Vec<u8> = aes_block.mix_column(&data);
+        let data: &[u8] = &[219, 19, 83, 69];        
+        let result: Vec<u8> = aes_block.mix_column(data);
         assert_eq!(expected_result, result);
     }
 
@@ -456,8 +581,8 @@ mod tests {
     fn test_inverse_mix_column2() {
         let aes_block: AESBlock<EncryptedState> = AESBlock::<EncryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result: Vec<u8> = vec![219, 19, 83, 69];
-        let data: Vec<&u8> = vec![&142, &77, &161, &188];
-        let result: Vec<u8> = aes_block.mix_column(&data);
+        let data: &[u8] = &[142, 77, 161, 188];
+        let result: Vec<u8> = aes_block.mix_column(data);
         assert_eq!(expected_result, result);
     }
 
@@ -465,8 +590,8 @@ mod tests {
     fn test_mix_column3() {
         let aes_block: AESBlock = AESBlock::<DecryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result: Vec<u8> = vec![159, 220, 88, 157];
-        let data: Vec<&u8> = vec![&242, &10, &34, &92];
-        let result: Vec<u8> = aes_block.mix_column(&data);
+        let data: &[u8] = &[242, 10, 34, 92];
+        let result: Vec<u8> = aes_block.mix_column(data);
         assert_eq!(expected_result, result);
     }
 
@@ -474,8 +599,8 @@ mod tests {
     fn test_inverse_mix_column3() {
         let aes_block: AESBlock<EncryptedState> = AESBlock::<EncryptedState>::new(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let expected_result: Vec<u8> = vec![242, 10, 34, 92];
-        let data: Vec<&u8> = vec![&159, &220, &88, &157];
-        let result: Vec<u8> = aes_block.mix_column(&data);
+        let data: &[u8] = &[159, 220, 88, 157];
+        let result: Vec<u8> = aes_block.mix_column(data);
         assert_eq!(expected_result, result);
     }
 
@@ -575,4 +700,75 @@ mod tests {
         assert_eq!(expected_result, result.grid);
     }
 
+    #[test]
+    fn encrypt_decrypt_file() {
+        let bytes = &std::fs::read("testdata/testfile.in").unwrap();   
+        let expected_result = String::from_utf8_lossy(bytes);     
+        let roundkeys: Vec<Vec<u8>> = vec![
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4],
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4],
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4] 
+            ];      
+        let aes_data = AESData::<DecryptedState>::new(bytes.to_vec());
+        let encrypted = aes_data.encrypt(&roundkeys);
+        let decrypted = encrypted.decrypt(&roundkeys);
+        let result = String::from_utf8_lossy(&decrypted.data);
+        assert_eq!(expected_result, result);
+    }
+
+    #[test]
+    fn encrypt_decrypt_file2() {
+        let bytes = &std::fs::read("testdata/large.in").unwrap();   
+        let expected_result = String::from_utf8_lossy(bytes);     
+        let roundkeys: Vec<Vec<u8>> = vec![
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![1, 3, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![2, 4, 4, 8, 12, 1, 3, 5, 7, 9, 11, 113, 15, 2, 3, 4], 
+            vec![3, 5, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![4, 6, 4, 8, 12, 1, 3, 5, 7, 9, 11, 123, 15, 2, 3, 4],
+            vec![5, 7, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![6, 8, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![7, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 123, 15, 2, 3, 4], 
+            vec![8, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![9, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 143, 15, 2, 3, 4],
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4] 
+            ];      
+        let aes_data = AESData::<DecryptedState>::new(bytes.to_vec());
+        let encrypted = aes_data.encrypt(&roundkeys);
+        let decrypted = encrypted.decrypt(&roundkeys);
+        let result = String::from_utf8_lossy(&decrypted.data);
+        assert_eq!(expected_result, result);
+    }
+
+    #[test]
+    fn encrypt_decrypt_file3() {
+        let bytes = &std::fs::read("testdata/binary.in").unwrap();   
+        let expected_result = String::from_utf8_lossy(bytes);     
+        let roundkeys: Vec<Vec<u8>> = vec![
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![1, 3, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![2, 4, 4, 8, 12, 1, 3, 5, 7, 9, 11, 113, 15, 2, 3, 4], 
+            vec![3, 5, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![4, 6, 4, 8, 12, 1, 3, 5, 7, 9, 11, 123, 15, 2, 3, 4],
+            vec![5, 7, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![6, 8, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![7, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 123, 15, 2, 3, 4], 
+            vec![8, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4], 
+            vec![9, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 143, 15, 2, 3, 4],
+            vec![0, 2, 4, 8, 12, 1, 3, 5, 7, 9, 11, 13, 15, 2, 3, 4] 
+            ];      
+        let aes_data = AESData::<DecryptedState>::new(bytes.to_vec());
+        let encrypted = aes_data.encrypt(&roundkeys);
+        let decrypted = encrypted.decrypt(&roundkeys);
+        let result = String::from_utf8_lossy(&decrypted.data);
+        assert_eq!(expected_result, result);
+    }
 }
