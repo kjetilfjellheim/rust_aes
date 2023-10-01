@@ -873,6 +873,17 @@ mod tests {
         assert_eq!(expected_result, roundkeys);
     }
 
+    #[test]
+    fn full_crypt_decrypt() {
+        let data = vec![0x00, 0x00, 0x01, 0x01, 0x03, 0x03, 0x07, 0x07, 0x0f, 0x0f, 0x1f, 0x1f, 0x3f, 0x3f, 0x7f, 0x7f];
+        let init_key: Vec<u8> = vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let roundkeys = AESData::<EncryptedState>::generate_roundkeys(&init_key);
+        let aes_data = AESData::<DecryptedState>::new(data.clone());
+        let encrypted = aes_data.encrypt(&roundkeys);
+        let decrypted = encrypted.decrypt(&roundkeys);
+        assert_eq!(data, decrypted.data);    
+    }
+
 }
 
 
